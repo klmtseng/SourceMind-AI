@@ -2,12 +2,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult } from "../types";
 
 export const analyzeRepo = async (
+  apiKey: string,
   readmeContent: string,
   repoMetadata: any
 ): Promise<AnalysisResult> => {
-  // Use process.env.API_KEY directly as per guidelines.
-  // Assume it is pre-configured and valid.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  if (!apiKey) {
+    throw new Error("Gemini API Key is missing. Please provide it in the application settings.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `
     You are SourceMind, an elite AI Technical Architect.
