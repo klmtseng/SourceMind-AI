@@ -1,60 +1,25 @@
 import React, { useState } from 'react';
-import { Search, Github, AlertCircle, Star, GitFork, ExternalLink, Loader2, Key, Zap, ShieldCheck } from 'lucide-react';
-import { RepoMetadata, RepoLanguages, AnalysisResult, LoadingState } from './types';
-import * as githubService from './services/githubService';
-import * as geminiService from './services/geminiService';
+import { Github, AlertCircle, Star, GitFork, ExternalLink, Loader2, Zap, ShieldCheck, Settings } from 'lucide-react';
+import { LoadingState } from './types';
 import AnalysisCard from './components/AnalysisCard';
 import LanguageChart from './components/LanguageChart';
+import SettingsPanel from './components/SettingsPanel';
+import { useSettings } from './contexts/SettingsContext';
+import { useRepoAnalysis } from './hooks/useRepoAnalysis';
 
 const DEFAULT_REPO = "facebook/react";
 
 const App: React.FC = () => {
   const [repoInput, setRepoInput] = useState(DEFAULT_REPO);
-  const [githubToken, setGithubToken] = useState("");
-  const [showTokenInput, setShowTokenInput] = useState(false);
-  const [loadingState, setLoadingState] = useState<LoadingState>(LoadingState.IDLE);
-  const [error, setError] = useState<string | null>(null);
-  
-  const [repoMetadata, setRepoMetadata] = useState<RepoMetadata | null>(null);
-  const [languages, setLanguages] = useState<RepoLanguages | null>(null);
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-
-  const handleAnalyze = async () => {
-    if (!repoInput.includes('/')) {
-      setError("Please format as 'owner/repo'");
-      return;
-    }
-    
-    const [owner, repo] = repoInput.split('/');
-    setLoadingState(LoadingState.FETCHING_GITHUB);
-    setError(null);
-    setAnalysis(null);
-    setRepoMetadata(null);
-
-    try {
-      // 1. Fetch GitHub Data in Parallel (Optimization)
-      const [metadata, langs, readme] = await Promise.all([
-        githubService.fetchRepoMetadata(owner, repo, githubToken),
-        githubService.fetchRepoLanguages(owner, repo, githubToken),
-        githubService.fetchReadmeContent(owner, repo, githubToken)
-      ]);
-
-      setRepoMetadata(metadata);
-      setLanguages(langs);
-
-      // 2. Analyze with Gemini
-      setLoadingState(LoadingState.ANALYZING_GEMINI);
-      const analysisResult = await geminiService.analyzeRepo(readme, { ...metadata, languages: langs });
-      
-      setAnalysis(analysisResult);
-      setLoadingState(LoadingState.COMPLETE);
-
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || "An unexpected error occurred.");
-      setLoadingState(LoadingState.ERROR);
-    }
-  };
+  const { isSettingsOpen, toggleSettings } = useSettings();
+  const { 
+    analyze, 
+    loadingState, 
+    error, 
+    repoMetadata, 
+    languages, 
+    analysis 
+  } = useRepoAnalysis();
 
   return (
     <div className="min-h-screen bg-background text-slate-100 font-sans selection:bg-primary/30 relative overflow-x-hidden">
@@ -73,11 +38,11 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-6">
              <button 
-               onClick={() => setShowTokenInput(!showTokenInput)}
-               className={`text-xs transition-colors flex items-center gap-1.5 ${showTokenInput ? 'text-primary' : 'text-slate-400 hover:text-white'}`}
+               onClick={toggleSettings}
+               className={`text-xs transition-colors flex items-center gap-1.5 ${isSettingsOpen ? 'text-primary' : 'text-slate-400 hover:text-white'}`}
              >
-                <Key size={14} />
-                {showTokenInput ? 'Hide Token Input' : 'API Token'}
+                <Settings size={14} />
+                {isSettingsOpen ? 'Close Settings' : 'API Settings'}
              </button>
              <a href="https://github.com" target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white transition-colors">
                 <Github size={22} />
@@ -90,7 +55,7 @@ const App: React.FC = () => {
       <main className="max-w-5xl mx-auto px-4 py-16 relative z-10">
         
         {/* Search / Hero Section */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-12">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700 text-xs font-medium text-primary mb-6 animate-fade-in-down">
                 <ShieldCheck size={12} />
                 <span>Powered by Gemini 3 Flash Intelligence</span>
@@ -114,10 +79,11 @@ const App: React.FC = () => {
                             onChange={(e) => setRepoInput(e.target.value)}
                             placeholder="owner/repo"
                             className="block w-full pl-11 pr-4 py-3 bg-transparent text-slate-100 placeholder-slate-600 focus:outline-none font-mono text-sm"
+                            onKeyDown={(e) => e.key === 'Enter' && analyze(repoInput)}
                         />
                     </div>
                     <button
-                        onClick={handleAnalyze}
+                        onClick={() => analyze(repoInput)}
                         disabled={loadingState === LoadingState.FETCHING_GITHUB || loadingState === LoadingState.ANALYZING_GEMINI}
                         className="inline-flex items-center px-6 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white bg-gradient-to-r from-primary to-cyan-600 hover:to-cyan-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0f172a] focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all transform active:scale-95"
                     >
@@ -129,27 +95,14 @@ const App: React.FC = () => {
                     </button>
                 </div>
 
-                {showTokenInput && (
-                    <div className="animate-fade-in-down bg-surfaceLight/50 p-4 rounded-xl border border-slate-700/50">
-                        <input
-                            type="password"
-                            value={githubToken}
-                            onChange={(e) => setGithubToken(e.target.value)}
-                            placeholder="Paste GitHub Personal Access Token (Optional)"
-                            className="block w-full px-4 py-2 text-xs border border-slate-600 rounded-lg bg-[#020617] text-slate-300 focus:outline-none focus:border-primary font-mono placeholder-slate-600"
-                        />
-                        <p className="text-[10px] text-slate-500 text-left mt-2 flex items-center gap-1">
-                            <AlertCircle size={10} />
-                            Only required if you exceed default GitHub API rate limits.
-                        </p>
-                    </div>
-                )}
+                {/* Settings Panel Component */}
+                <SettingsPanel />
             </div>
         </div>
 
         {/* Error State */}
         {error && (
-            <div className="max-w-2xl mx-auto mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 backdrop-blur-sm">
+            <div className="max-w-2xl mx-auto mb-8 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 backdrop-blur-sm animate-fade-in">
                 <AlertCircle size={20} />
                 <span>{error}</span>
             </div>
